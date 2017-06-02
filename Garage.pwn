@@ -9,6 +9,7 @@ Y_Less for sscanf2
 Incognito for streamer
 Yashas for I_ZCMD
 BlueG and maddinat0r for MySQL
+SA-MP Team for make it possibile
 *************************************************************************
 */
 
