@@ -3,6 +3,12 @@
 				Garage System - MySQL r41-2
 					Made by Banditul
 						02.05.2017
+
+Credits:
+Y_Less for sscanf2
+Incognito for streamer
+Yashas for I_ZCMD
+BlueG and maddinat0r for MySQL
 *************************************************************************
 */
 
