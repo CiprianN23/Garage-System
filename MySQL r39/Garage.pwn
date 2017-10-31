@@ -1,8 +1,8 @@
 /*
 *************************************************************************
-				Garage System - MySQL r41-2
+				Garage System - MySQL r33-r39
 					Made by Banditul
-						02.05.2017
+						31.10.2017
 
 Credits:
 Y_Less for sscanf2
@@ -15,16 +15,21 @@ SA-MP Team for make it possibile
 
 //Includes
 #include <a_samp>
-#include <a_mysql>
+#include <a_mysql1>
 #include <streamer>
-#include <sscanf2>
+#include <sscanf22>
 #include <izcmd>
+
+#if !defined strcpy
+	#define strcpy(%0,%1,%2) strcat((%0[0] = EOS, %0), %1, %2)
+#endif
+
 
 //Defines
 #define MAX_GARAGES 50 // Increase/Decrease at your will
 
 // MySQL connection handle
-new MySQL: SQL;
+new SQL;
 
 // MySQL configuration
 #define		MYSQL_HOST 			"localhost"
@@ -43,6 +48,7 @@ enum E_GARAGES{
 	Float: eZ, //Hold exterior Z coordonate ( usually the Z where was created)
 	Price, // Hold the price of the garage (set when it's created)
 	Size, // Hodl the garage size
+	VirtualWorld, //Hold the virtual world of the garage(important to not have  different garages to share players/cars)
 
 	//Unsaved Data
 	MapiconID, // Hold the map icon ID
@@ -54,15 +60,16 @@ new GarageInfo[MAX_GARAGES][E_GARAGES];
 //Garage type enum (for multiple garages types)
 enum E_GarageType{
 	InteriorID, // Hold the interior ID
+
 	Float: intX, // Hold the Interior X of the garage
 	Float: intY, // Hold the Interior Y of the garage
 	Float: intZ // // Hold the Interior Z of the garage
 };
 
 new GarageInteriors[][E_GarageType] = {
-	{1 , 404.8766,-293.0546,997.1705}, // Small Garage
-	{1 , 673.4003,-204.4471,982.4297}, // Medium Garage
-	{1, 122.5266,-397.4305,1190.3938} // Big Garage
+	{1, 404.8766,-293.0546,997.1705}, // Small Garage
+	{1, 673.4003,-204.4471,982.4297}, // Medium Garage
+	{1,122.5266,-397.4305,1190.3938} // Big Garage
 };
 
 new PlayerGarageID[MAX_PLAYERS];
@@ -70,14 +77,8 @@ new PlayerGarageID[MAX_PLAYERS];
 public OnFilterScriptInit(){
 	//CreateDynamicObject(modelid, Float:x, Float:y, Float:z, Float:rx, Float:ry, Float:rz, worldid = -1, interiorid = -1, playerid = -1, Float:streamdistance = STREAMER_OBJECT_SD, Float:drawdistance = STREAMER_OBJECT_DD, areaid = -1, priority = 0);
 
-	new MySQLOpt: option_id = mysql_init_options();
-
-	mysql_set_option(option_id, AUTO_RECONNECT, true); // it automatically reconnects when loosing connection to mysql server
-
-	mysql_log(ALL);
-
-	SQL = mysql_connect(MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE, option_id); // AUTO_RECONNECT is enabled for this connection handle only
-	if (SQL == MYSQL_INVALID_HANDLE || mysql_errno(SQL) != 0)
+	SQL = mysql_connect(MYSQL_HOST, MYSQL_USER, MYSQL_DATABASE,MYSQL_PASSWORD); // AUTO_RECONNECT is enabled for this connection handle only
+	if (mysql_errno(SQL) != 0)
 	{
 		print("MySQL connection failed. Server is shutting down.");
 		SendRconCommand("exit"); // close the server if there is no connection
@@ -124,12 +125,12 @@ LoadGarages(){
 
 	rows = cache_num_rows();
 	//If there is any data, load it
-	if(rows >= 1)
+	if(rows)
 	{
 		// Loop through all rows 
         for (new row; row < rows; row++) 
         {
-        	cache_get_value_name_int(row, "ID", ID);
+        	ID = cache_get_field_content_int(row, "ID");
 
         	// Check if the ID is invalid (out of range) 
             if ((ID < 1) || (ID >= MAX_GARAGES)) 
@@ -142,13 +143,15 @@ LoadGarages(){
                 continue; 
             }
 
-            cache_get_value_name(row, "Owner", GarageInfo[ID][Owner], MAX_PLAYER_NAME);
-            cache_get_value_name_int(row, "Owned", GarageInfo[ID][Owned]);
-            cache_get_value_name_int(row, "Size", GarageInfo[ID][Size]);
-            cache_get_value_name_int(row, "Price", GarageInfo[ID][Price]);
-            cache_get_value_name_float(row,"eX", GarageInfo[ID][eX]);
-            cache_get_value_name_float(row,"eY", GarageInfo[ID][eY]);
-            cache_get_value_name_float(row,"eZ", GarageInfo[ID][eZ]);
+            cache_get_field_content(row, "Owner", GarageInfo[ID][Owner], .max_len = MAX_PLAYER_NAME);
+            GarageInfo[ID][Owned] = cache_get_field_content_int(row, "Owned");
+            GarageInfo[ID][Size] = cache_get_field_content_int(row, "Size");
+            GarageInfo[ID][Price] = cache_get_field_content_int(row, "Price");
+            GarageInfo[ID][eX] = cache_get_field_content_float(row,"eX");
+            GarageInfo[ID][eY] = cache_get_field_content_float(row,"eY");
+            GarageInfo[ID][eZ] = cache_get_field_content_float(row,"eZ");
+
+            GarageInfo[ID][VirtualWorld] = ID;
 
             // Create the 3DText, mapicon and pickup that appears at the garage entrance 
             Garage_Update(ID);
@@ -216,7 +219,7 @@ Garage_SetOwner(playerid, GarageID) {
 	// Set the garage as owned
 	GarageInfo[GarageID][Owned] = 1;
 	// Store the owner-name for the garage
-	format(GarageInfo[GarageID][Owner], sizeof(Name), Name);
+	strcpy(GarageInfo[GarageID][Owner], Name, sizeof(Name));
 
 	//Take player money
 	GivePlayerMoney(playerid, -GarageInfo[GarageID][Price]);
@@ -225,7 +228,7 @@ Garage_SetOwner(playerid, GarageID) {
 	Garage_Update(GarageID);
 
 	mysql_format(SQL, Msg, sizeof(Msg), "UPDATE `garages` SET `Owner` = '%e' , `Owned` = 1 WHERE `ID` = %i" , GarageInfo[GarageID][Owner] , GarageID);
-	mysql_tquery(SQL, Msg, "","");
+	mysql_tquery(SQL, Msg);
 
 	// Let the player know he bought the garage
 	format(Msg, sizeof(Msg), "You've bought the garage for $%i", GarageInfo[GarageID][Price]);
@@ -248,8 +251,8 @@ Garage_PlayerIsOwner(playerid, GarageID)
 
 CMD:creategarage(playerid,params[]) {
 	
-	if(!IsPlayerAdmin(playerid)) 
-		return SendClientMessage(playerid, -1, "You are not an admin."); // Replace with your admin verification
+	if(!IsPlayerAdmin(playerid)) // Replace with your admin verification
+		return SendClientMessage(playerid, -1, "You are not an admin."); 
 
 	// If the player is the driver of a vehicle, exit the command 
     if(GetPlayerVehicleID(playerid) != 0) 
@@ -285,7 +288,7 @@ CMD:creategarage(playerid,params[]) {
 		GetPlayerPos(playerid, x, y, z);
 		// Set some default data
 		GarageInfo[ID][Owned] = 0;
-		format(GarageInfo[ID][Owner], MAX_PLAYER_NAME, "None");
+		GarageInfo[ID][Owner][0] = EOS;
 		GarageInfo[ID][eX] = x;
 		GarageInfo[ID][eY] = y;
 		GarageInfo[ID][eZ] = z;
@@ -297,7 +300,7 @@ CMD:creategarage(playerid,params[]) {
 
 		//Insert data into MySQL databse
 		mysql_format(SQL, Msg, sizeof(Msg), "INSERT INTO `garages` (ID , eX , eY, eZ  , Owner, Price, Size) VALUES (%i , %f , %f, %f , '%e', %i , %i)" , ID, x, y, z , GarageInfo[ID][Owner], buyprice, size);
-		mysql_tquery(SQL, Msg, "","");
+		mysql_tquery(SQL, Msg);
 
 		// Inform the player that he created a new garage
 		format(Msg, sizeof(Msg), "{00FF00}You've succesfully created a garage with ID: {FFFF00}%i", ID);
@@ -344,10 +347,14 @@ CMD:enter(playerid, params[]) {
 					//Store the GarageID where player enter
 					PlayerGarageID[playerid] = GarageID;
 
-					// Set the player inside the interior of the garage
-					SetPlayerInterior(playerid, 1);
 					// Set the position of the player at the spawn-location of the garage's interior
-					SetPlayerPosEx(playerid, GarageInteriors[IntID][intX], GarageInteriors[IntID][intY], GarageInteriors[IntID][intZ] , 1);
+					if(GetPlayerVehicleID(playerid) != 0){
+						SetPlayerPosEx(playerid, GarageInteriors[IntID][intX], GarageInteriors[IntID][intY], GarageInteriors[IntID][intZ] , 1, GarageInfo[GarageID][VirtualWorld]);
+						SetVehiclePosEx(GetPlayerVehicleID(playerid),playerid ,GarageInteriors[IntID][intX], GarageInteriors[IntID][intY], GarageInteriors[IntID][intZ] , 1, GarageInfo[GarageID][VirtualWorld]);
+					}
+					else{
+						SetPlayerPosEx(playerid, GarageInteriors[IntID][intX], GarageInteriors[IntID][intY], GarageInteriors[IntID][intZ] , 1, GarageInfo[GarageID][VirtualWorld]);
+					}
 
 					// Exit the function
 					return 1;
@@ -365,7 +372,13 @@ CMD:exitgarage(playerid,params[]) {
 
 	if(PlayerGarageID[playerid] != 0) {
 		new GarageID = PlayerGarageID[playerid];
-		SetPlayerPosEx(playerid, GarageInfo[GarageID][eX] , GarageInfo[GarageID][eY], GarageInfo[GarageID][eZ]);
+		if(GetPlayerVehicleID(playerid) != 0){
+			SetPlayerPosEx(playerid, GarageInfo[GarageID][eX] , GarageInfo[GarageID][eY], GarageInfo[GarageID][eZ]);
+			SetVehiclePosEx(GetPlayerVehicleID(playerid),playerid ,GarageInfo[GarageID][eX] , GarageInfo[GarageID][eY], GarageInfo[GarageID][eZ]);
+		}
+		else{
+			SetPlayerPosEx(playerid, GarageInfo[GarageID][eX] , GarageInfo[GarageID][eY], GarageInfo[GarageID][eZ]);
+		}
 		SendClientMessage(playerid, -1 , "You exit the garage.");
 	}
 	return 1;
@@ -458,23 +471,23 @@ CMD:delgarage(playerid, params[]) {
 					}
 
 					// Clear all data of the garage
-					GarageInfo[GarageID][Owned] = 0;
-					format(GarageInfo[GarageID][Owned] , MAX_PLAYER_NAME , "None");
-					GarageInfo[GarageID][eX] = 0.0;
-					GarageInfo[GarageID][eY] = 0.0;
+					GarageInfo[GarageID][Owner][0] = EOS;
+					GarageInfo[GarageID][eX] = 
+					GarageInfo[GarageID][eY] = 
 					GarageInfo[GarageID][eZ] = 0.0;
-					GarageInfo[GarageID][Price] = 0;
-					GarageInfo[GarageID][Size] = 0;
+					GarageInfo[GarageID][Price] = 
+					GarageInfo[GarageID][Size] = 
+					GarageInfo[GarageID][Owned] = 0;
 
 					// Destroy the mapicon, 3DText and pickup for the garage
 					DestroyDynamicPickup(GarageInfo[GarageID][PickupID]);
 					DestroyDynamicMapIcon(GarageInfo[GarageID][MapiconID]);
 					DestroyDynamic3DTextLabel(GarageInfo[GarageID][Label]);
-					GarageInfo[GarageID][PickupID] = 0;
+					GarageInfo[GarageID][PickupID] = 
 					GarageInfo[GarageID][MapiconID] = 0;
 
 					mysql_format(SQL, Msg, sizeof(Msg), "DELETE FROM `garages` WHERE `ID` = %i LIMIT 1" , GarageID);
-					mysql_tquery(SQL, Msg, "","");
+					mysql_tquery(SQL, Msg);
 
 					// Also let the player know he deleted the garage
 					format(Msg, 128, "{00FF00}You have deleted the garage with ID: {FFFF00}%i", GarageID);
@@ -497,9 +510,19 @@ CMD:delgarage(playerid, params[]) {
 }
 
 
-SetPlayerPosEx(playerid, Float: x, Float: y, Float: z , interiorid = 0) {
-	SetPlayerPos(playerid, x, y, z);
+SetPlayerPosEx(playerid, Float: x, Float: y, Float: z , interiorid = 0, virtualworld = 0) {
+	SetPlayerVirtualWorld(playerid, virtualworld);
 	SetPlayerInterior(playerid, interiorid);
+	SetPlayerPos(playerid, x, y, z);
 	Streamer_UpdateEx(playerid, x, y, z , .freezeplayer = 1);
 	SetCameraBehindPlayer(playerid);
 }
+SetVehiclePosEx(vehicleid, playerid, Float: x, Float: y, Float: z , interiorid = 0, virtualworld = 0) {
+	SetVehicleVirtualWorld(vehicleid, virtualworld);
+	LinkVehicleToInterior(vehicleid, interiorid);
+	SetVehiclePos(vehicleid, x, y, z);
+	SetVehicleZAngle(vehicleid, 90.0);
+	PutPlayerInVehicle(playerid, vehicleid, 0);
+	Streamer_UpdateEx(playerid, x, y, z , .freezeplayer = 1);
+}
+
