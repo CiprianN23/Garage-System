@@ -6,6 +6,3 @@
 - [Streamer](https://github.com/samp-incognito/samp-streamer-plugin/releases/tag/v2.9.1)
 - [sscanf](https://github.com/maddinat0r/sscanf/releases)
 - [And of course , sa-mp server by SA-MP Team](http://files.sa-mp.com/samp037_svr_R2-2-1_win32.zip)
-
-
-
