@@ -15,9 +15,9 @@ SA-MP Team for make it possibile
 
 //Includes
 #include <a_samp>
-#include <a_mysql1>
+#include <a_mysql>
 #include <streamer>
-#include <sscanf22>
+#include <sscanf2>
 #include <izcmd>
 
 #if !defined strcpy
