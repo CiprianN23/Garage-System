@@ -35,7 +35,6 @@ CREATE TABLE `garages` (
   `eZ` float NOT NULL DEFAULT '0',
   `Price` int(11) NOT NULL DEFAULT '0',
   `Size` tinyint(4) NOT NULL
-  `VirtualWorld` int(10) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
